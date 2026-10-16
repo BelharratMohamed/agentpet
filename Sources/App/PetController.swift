@@ -47,6 +47,12 @@ final class PetController: ObservableObject {
         (UserDefaults.standard.object(forKey: "agentpet.animationsEnabled") as? Bool) ?? true {
         didSet { UserDefaults.standard.set(animationsEnabled, forKey: "agentpet.animationsEnabled") }
     }
+
+    /// ⌘-click on the pet toggles the full agent list.
+    @Published var cmdClickExpandEnabled: Bool =
+        (UserDefaults.standard.object(forKey: "agentpet.cmdClickExpandEnabled") as? Bool) ?? true {
+        didSet { UserDefaults.standard.set(cmdClickExpandEnabled, forKey: "agentpet.cmdClickExpandEnabled") }
+    }
     /// User-adjustable sprite frame rate (1–12 fps). Active moods animate at this
     /// rate; idle is capped at 2 fps regardless of the slider (idle CPU win).
     @Published var animationFPS: Double =

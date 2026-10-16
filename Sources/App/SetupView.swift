@@ -290,6 +290,15 @@ private struct GeneralTab: View {
                 }
                 HStack {
                     VStack(alignment: .leading, spacing: 2) {
+                        Text("⌘-click expands agent list")
+                        Text("⌘-click the pet to show or hide every open agent.")
+                            .font(.caption).foregroundStyle(.secondary)
+                    }
+                    Spacer()
+                    ColorSwitch(isOn: $pet.cmdClickExpandEnabled)
+                }
+                HStack {
+                    VStack(alignment: .leading, spacing: 2) {
                         Text("Animation speed")
                         Text("Sprite frame rate. Idle is always capped at 2 fps.")
                             .font(.caption).foregroundStyle(.secondary)

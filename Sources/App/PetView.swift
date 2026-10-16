@@ -236,7 +236,7 @@ struct FloatingPetView: View {
                 petDragging = false
                 guard !wasDrag else { return }
                 // ⌘-click folds/unfolds the full agent list; a plain click pets.
-                if NSEvent.modifierFlags.contains(.command) {
+                if pet.cmdClickExpandEnabled && NSEvent.modifierFlags.contains(.command) {
                     withAnimation(.spring(response: 0.3, dampingFraction: 0.75)) { model.bubbleExpanded.toggle() }
                 } else {
                     model.petTap()
