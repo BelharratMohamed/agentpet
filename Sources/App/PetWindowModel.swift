@@ -14,11 +14,9 @@ final class PetWindowModel: ObservableObject {
     @Published var petID: String?
     @Published var mood: PetMood
     @Published var projectName: String?
-    @Published var sessions: [AgentSession] {
-        // Nothing left to list: fold back so the next agent starts compact.
-        didSet { if sessions.isEmpty { bubbleExpanded = false } }
-    }
-    /// When true the bubble lists every running agent (⌘-click on the pet toggles).
+    @Published var sessions: [AgentSession]
+    /// When true the bubble lists every open agent, idle ones included
+    /// (⌘-click on the pet toggles).
     @Published var bubbleExpanded = false
     @Published var count: Int
     @Published var chatLine: String

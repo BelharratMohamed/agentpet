@@ -95,6 +95,7 @@ struct FloatingPetView: View {
     @ObservedObject private var pet = PetController.shared
     @ObservedObject private var bubbleSettings = BubbleSettings.shared
     @ObservedObject private var appLang = AppLanguage.shared
+    @ObservedObject private var daemon = AppDaemon.shared
 
     @State private var petDragging = false
     @State private var petDragStartOrigin: NSPoint = .zero
@@ -102,13 +103,17 @@ struct FloatingPetView: View {
 
     var body: some View {
         VStack(spacing: 2) {
-            if pet.showChat && model.petID != nil {
+            if model.bubbleExpanded && model.petID != nil && !daemon.sessions.isEmpty {
+                // ⌘-click: every open agent, even idle ones and whatever the
+                // chat/filter settings say.
+                alignedToPet(AgentBubble(sessions: daemon.sessions, expanded: true))
+            } else if pet.showChat && model.petID != nil {
                 // Gate on the sessions the bubble will actually show: if the
                 // state/kind filters hide all of them, drawing AgentBubble
                 // would leave an empty (off-centre, contentless) bubble.
                 if bubbleSettings.multiAgentBubbleEnabled
                     && !AgentBubble.visible(model.sessions, settings: bubbleSettings).isEmpty {
-                    alignedToPet(AgentBubble(sessions: model.sessions, expanded: model.bubbleExpanded))
+                    alignedToPet(AgentBubble(sessions: model.sessions))
                 } else if !model.chatLine.isEmpty {
                     alignedToPet(ChatBubble(text: model.chatLine,
                                             projectName: pet.splitPet ? model.projectName : nil))
@@ -274,7 +279,7 @@ struct AgentBubble: View {
 
     private var groupedSessions: [GroupedSession] {
         // 1. Filter
-        let filtered = Self.visible(sessions, settings: settings)
+        let filtered = expanded ? sessions : Self.visible(sessions, settings: settings)
 
         // 2. Sort (grouped mode always sorts by kind first)
         var sorted = filtered

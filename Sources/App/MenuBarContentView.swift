@@ -11,11 +11,10 @@ struct MenuContentView: View {
     @ObservedObject private var pet = PetController.shared
     var dismiss: () -> Void
 
-    /// Show agents that are doing something or just finished. Idle and merely
-    /// `registered` (open but not working) sessions are hidden, so an idle
-    /// terminal doesn't sit in the list; they reappear the moment they work.
+    /// Every open agent, including ones that are open but not working yet
+    /// (`registered`), so a terminal can be reached from here before it acts.
     private var agents: [AgentSession] {
-        daemon.sessions.filter { $0.state != .idle && $0.state != .registered }
+        daemon.sessions.filter { $0.state != .idle }
     }
 
     var body: some View {
@@ -374,10 +373,10 @@ private struct AgentRow: View {
 
     private var dotColor: Color {
         switch session.state {
-        case .working, .registered: return .blue
+        case .working: return .blue
         case .waiting: return .orange
         case .done: return .green
-        case .idle: return .gray
+        case .registered, .idle: return .gray
         }
     }
 

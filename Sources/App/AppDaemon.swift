@@ -52,6 +52,22 @@ final class AppDaemon: ObservableObject {
             Task { @MainActor [weak self] in self?.prune() }
         }
         ReactiveEngine.shared.start()
+        adoptAlreadyRunningAgents()
+    }
+
+    /// Registers agents that were open before the app launched (see
+    /// `RunningAgentScanner`); sessions that already reported in are left alone.
+    private func adoptAlreadyRunningAgents() {
+        Task.detached(priority: .utility) { [weak self] in
+            let found = RunningAgentScanner.claudeSessions()
+            await MainActor.run { [weak self] in
+                guard let self else { return }
+                for event in found where self.store.session(id: event.sessionId) == nil {
+                    _ = self.store.apply(event, now: Date())
+                }
+                self.refresh()
+            }
+        }
     }
 
     /// Clears the tracked sessions (e.g. after disconnecting an integration).
