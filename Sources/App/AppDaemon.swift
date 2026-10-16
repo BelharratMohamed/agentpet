@@ -80,31 +80,58 @@ final class AppDaemon: ObservableObject {
     /// session; Warp/others just activate the app).
     func focusTerminal(sessionId: String) {
         guard let session = store.session(id: sessionId) else { return }
-        TerminalFocus.focus(
-            program: session.terminalProgram, tty: session.terminalTTY, focusURL: session.terminalFocusURL,
-            ghosttyTerminalID: ghosttyTerminals[sessionId], project: session.project)
+        let focus: @MainActor @Sendable () -> Void = { [weak self] in
+            guard let self else { return }
+            TerminalFocus.focus(
+                program: session.terminalProgram, tty: session.terminalTTY, focusURL: session.terminalFocusURL,
+                ghosttyTerminalID: self.ghosttyTerminals[sessionId], project: session.project)
+        }
+        // No binding yet (the session predates this app run and has been quiet
+        // since): resolve it now. The focused surface is where the *user* is, not
+        // where the agent is, so only a unique match or the tty probe counts here.
+        if session.terminalProgram == "ghostty", ghosttyTerminals[sessionId] == nil {
+            bindGhosttyTerminal(for: session, trustFocus: false, ignoreAttemptLimit: true, then: focus)
+        } else {
+            focus()
+        }
     }
 
     /// Ties `session` to the Ghostty surface it runs in: among the surfaces in the
-    /// session's directory that no other session owns, take the focused one (the
-    /// terminal the user just launched the agent from), else the first. Runs off
+    /// session's directory that no other session owns, a single one is the answer;
+    /// with several, the one whose title changes when we write to the session's
+    /// tty, else the focused one, else the first. Runs off
     /// the main thread; a miss is retried on the next few events, then dropped
     /// (clicks then fall back to matching by directory).
-    private func bindGhosttyTerminal(for session: AgentSession) {
+    private func bindGhosttyTerminal(
+        for session: AgentSession, trustFocus: Bool = true, ignoreAttemptLimit: Bool = false,
+        then completion: (@MainActor () -> Void)? = nil
+    ) {
         guard session.terminalProgram == "ghostty", let project = session.project,
               ghosttyTerminals[session.id] == nil,
-              ghosttyBindAttempts[session.id, default: 0] < Self.maxGhosttyBindAttempts
-        else { return }
+              ignoreAttemptLimit || ghosttyBindAttempts[session.id, default: 0] < Self.maxGhosttyBindAttempts
+        else { completion?(); return }
         ghosttyBindAttempts[session.id, default: 0] += 1
         let sessionId = session.id
         let claimed = Set(ghosttyTerminals.values)
+        let tty = session.terminalTTY
         Task.detached(priority: .utility) { [weak self] in
-            let found = GhosttyTerminalMatcher.pick(
-                project: project, among: GhosttyLocator.listTerminals(), claimed: claimed)
+            let terminals = GhosttyLocator.listTerminals()
+            let candidates = GhosttyTerminalMatcher.candidates(
+                project: project, among: terminals, claimed: claimed)
+            // Several surfaces in one directory: the path can't tell them apart,
+            // so ask the session's own tty which one it is.
+            let probed = (candidates.count > 1 ? tty : nil)
+                .flatMap { GhosttyLocator.probe(tty: $0, among: candidates) }
+            let found = probed
+                ?? (candidates.count == 1 || trustFocus
+                    ? GhosttyTerminalMatcher.pick(project: project, among: terminals, claimed: claimed)
+                    : nil)
             await MainActor.run { [weak self] in
-                guard let self, let found, self.ghosttyTerminals[sessionId] == nil,
-                      !self.ghosttyTerminals.values.contains(found) else { return }
-                self.ghosttyTerminals[sessionId] = found
+                if let self, let found, self.ghosttyTerminals[sessionId] == nil,
+                   !self.ghosttyTerminals.values.contains(found) {
+                    self.ghosttyTerminals[sessionId] = found
+                }
+                completion?()
             }
         }
     }

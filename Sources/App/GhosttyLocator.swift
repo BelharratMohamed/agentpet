@@ -17,9 +17,41 @@ enum GhosttyLocator {
         guard isRunning, let out = runScript(listScript) else { return [] }
         return out.split(separator: "\n").compactMap { line in
             let f = line.split(separator: "\t", omittingEmptySubsequences: false)
-            guard f.count == 3 else { return nil }
-            return GhosttyTerminal(id: String(f[0]), workingDirectory: String(f[1]), isFocused: f[2] == "1")
+            guard f.count == 4 else { return nil }
+            return GhosttyTerminal(
+                id: String(f[0]), workingDirectory: String(f[1]), isFocused: f[2] == "1", name: String(f[3]))
         }
+    }
+
+    /// Finds which of `candidates` is the surface attached to `tty`, which several
+    /// surfaces in the same directory make impossible to tell from their path.
+    /// Writes a unique title to that tty (an invisible escape sequence), looks for
+    /// the surface that now carries it, then puts the old title back. Blocking —
+    /// call off the main thread.
+    static func probe(tty: String, among candidates: [GhosttyTerminal]) -> String? {
+        guard tty.hasPrefix("/dev/tty"), !candidates.isEmpty else { return nil }
+        let fd = open(tty, O_WRONLY | O_NOCTTY | O_NONBLOCK)
+        guard fd >= 0 else { return nil }
+        defer { close(fd) }
+        func setTitle(_ title: String) {
+            // OSC 2 sets the window title; strip anything that could end the sequence early.
+            let clean = title.filter { $0 != "\u{1B}" && $0 != "\u{07}" }
+            let bytes = Array("\u{1B}]2;\(clean)\u{07}".utf8)
+            _ = write(fd, bytes, bytes.count)
+        }
+        let token = "agentpet-probe-\(UUID().uuidString.prefix(8))"
+        let originals = Dictionary(uniqueKeysWithValues: candidates.map { ($0.id, $0.name) })
+        var hit: String?
+        setTitle(token)
+        defer {
+            // Give the title back; if the agent already rewrote it, it will again.
+            if let id = hit, let original = originals[id] { setTitle(original) }
+        }
+        for _ in 0..<8 where hit == nil {
+            Thread.sleep(forTimeInterval: 0.1)
+            hit = listTerminals().first { $0.name == token && originals[$0.id] != nil }?.id
+        }
+        return hit
     }
 
     /// Focuses the surface with `id` (selecting its tab and restoring its window
@@ -70,7 +102,7 @@ enum GhosttyLocator {
             repeat with t in terminals
                 set flag to "0"
                 if (id of t) is fid then set flag to "1"
-                set out to out & (id of t) & tab & (working directory of t) & tab & flag & linefeed
+                set out to out & (id of t) & tab & (working directory of t) & tab & flag & tab & (name of t) & linefeed
             end repeat
             return out
         end tell

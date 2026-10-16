@@ -9,11 +9,14 @@ public struct GhosttyTerminal: Sendable, Equatable {
     /// True only for the focused surface of the front window while Ghostty is
     /// the active app — i.e. the one the user is typing into right now.
     public let isFocused: Bool
+    /// The surface's current title (what the program running in it last set).
+    public let name: String
 
-    public init(id: String, workingDirectory: String, isFocused: Bool) {
+    public init(id: String, workingDirectory: String, isFocused: Bool, name: String = "") {
         self.id = id
         self.workingDirectory = workingDirectory
         self.isFocused = isFocused
+        self.name = name
     }
 }
 
@@ -30,11 +33,21 @@ public enum GhosttyTerminalMatcher {
         among terminals: [GhosttyTerminal],
         claimed: Set<String>
     ) -> String? {
+        let candidates = candidates(project: project, among: terminals, claimed: claimed)
+        return (candidates.first(where: \.isFocused) ?? candidates.first)?.id
+    }
+
+    /// The unclaimed surfaces sitting in `project`. More than one means the
+    /// directory can't tell them apart and the caller should probe by title.
+    public static func candidates(
+        project: String,
+        among terminals: [GhosttyTerminal],
+        claimed: Set<String>
+    ) -> [GhosttyTerminal] {
         let target = normalize(project)
-        let candidates = terminals.filter {
+        return terminals.filter {
             !claimed.contains($0.id) && normalize($0.workingDirectory) == target
         }
-        return (candidates.first(where: \.isFocused) ?? candidates.first)?.id
     }
 
     /// Ghostty reports directories with a trailing slash on some surfaces and not

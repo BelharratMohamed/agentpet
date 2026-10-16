@@ -2,7 +2,7 @@ import XCTest
 @testable import AgentPetCore
 
 final class GhosttyTerminalMatcherTests: XCTestCase {
-    private func term(_ id: String, _ dir: String, focused: Bool = false) -> GhosttyTerminal {
+    func term(_ id: String, _ dir: String, focused: Bool = false) -> GhosttyTerminal {
         GhosttyTerminal(id: id, workingDirectory: dir, isFocused: focused)
     }
 
@@ -39,5 +39,13 @@ final class GhosttyTerminalMatcherTests: XCTestCase {
 
     func testRootIsNotStrippedToEmpty() {
         XCTAssertEqual(GhosttyTerminalMatcher.pick(project: "/", among: [term("a", "/")], claimed: []), "a")
+    }
+}
+
+extension GhosttyTerminalMatcherTests {
+    func testCandidatesListsEverySameDirectoryUnclaimedTerminal() {
+        let all = [term("a", "/p"), term("b", "/p/"), term("c", "/q"), term("d", "/p")]
+        let ids = GhosttyTerminalMatcher.candidates(project: "/p", among: all, claimed: ["d"]).map(\.id)
+        XCTAssertEqual(ids, ["a", "b"])
     }
 }
