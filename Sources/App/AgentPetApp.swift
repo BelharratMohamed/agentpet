@@ -49,6 +49,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         Task { @MainActor in AgentIcons.prewarm() }
         PetController.shared.start()
         PetWindowController.shared.start()
+        NotificationManager.shared.installClickHandler()
         AppDaemon.shared.start()
         OpenUsageClient.shared.start()
         NativeUsageProbe.shared.start()

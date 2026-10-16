@@ -20,6 +20,13 @@ final class AppDaemon: ObservableObject {
     private let server = EventSocketServer(path: AgentPetPaths.socketPath)
     private var pruneTimer: Timer?
 
+    /// sessionId → Ghostty surface id. Ghostty exposes no tty or env var that
+    /// ties an agent to its terminal, so we bind them on the session's first
+    /// events (see `bindGhosttyTerminal`) and look the surface up on click.
+    private var ghosttyTerminals: [String: String] = [:]
+    private var ghosttyBindAttempts: [String: Int] = [:]
+    private static let maxGhosttyBindAttempts = 3
+
     func start() {
         // The approval reply can race the CLI closing its socket — a stray
         // write must return EPIPE, not SIGPIPE-kill the whole app.
@@ -69,10 +76,37 @@ final class AppDaemon: ObservableObject {
     }
 
     /// Brings the terminal running `sessionId` to the front (Terminal.app and
-    /// iTerm2 focus the exact tab via tty; Warp/others just activate the app).
+    /// iTerm2 focus the exact tab via tty, Ghostty the surface bound to the
+    /// session; Warp/others just activate the app).
     func focusTerminal(sessionId: String) {
         guard let session = store.session(id: sessionId) else { return }
-        TerminalFocus.focus(program: session.terminalProgram, tty: session.terminalTTY, focusURL: session.terminalFocusURL)
+        TerminalFocus.focus(
+            program: session.terminalProgram, tty: session.terminalTTY, focusURL: session.terminalFocusURL,
+            ghosttyTerminalID: ghosttyTerminals[sessionId], project: session.project)
+    }
+
+    /// Ties `session` to the Ghostty surface it runs in: among the surfaces in the
+    /// session's directory that no other session owns, take the focused one (the
+    /// terminal the user just launched the agent from), else the first. Runs off
+    /// the main thread; a miss is retried on the next few events, then dropped
+    /// (clicks then fall back to matching by directory).
+    private func bindGhosttyTerminal(for session: AgentSession) {
+        guard session.terminalProgram == "ghostty", let project = session.project,
+              ghosttyTerminals[session.id] == nil,
+              ghosttyBindAttempts[session.id, default: 0] < Self.maxGhosttyBindAttempts
+        else { return }
+        ghosttyBindAttempts[session.id, default: 0] += 1
+        let sessionId = session.id
+        let claimed = Set(ghosttyTerminals.values)
+        Task.detached(priority: .utility) { [weak self] in
+            let found = GhosttyTerminalMatcher.pick(
+                project: project, among: GhosttyLocator.listTerminals(), claimed: claimed)
+            await MainActor.run { [weak self] in
+                guard let self, let found, self.ghosttyTerminals[sessionId] == nil,
+                      !self.ghosttyTerminals.values.contains(found) else { return }
+                self.ghosttyTerminals[sessionId] = found
+            }
+        }
     }
 
     private func ingest(_ event: AgentEvent) {
@@ -82,6 +116,7 @@ final class AppDaemon: ObservableObject {
             refresh()
             return
         }
+        bindGhosttyTerminal(for: updated)
         resolveTitle(for: event)
         resolveModel(for: event)
         feedLiveTokens(for: event)
@@ -273,11 +308,13 @@ final class AppDaemon: ObservableObject {
         switch session.state {
         case .waiting:
             NotificationManager.shared.notify(
-                title: "\(project) needs input", body: session.message ?? "Waiting for you")
+                title: "\(project) needs input", body: session.message ?? "Waiting for you",
+                sessionId: session.id)
             SoundSettings.shared.play(.waiting)
         case .done:
             NotificationManager.shared.notify(
-                title: "\(project) finished", body: "Agent completed its turn")
+                title: "\(project) finished", body: "Agent completed its turn",
+                sessionId: session.id)
             SoundSettings.shared.play(.done)
             PetCareController.shared.recordMeal(petID: careTarget(forProject: session.project))
             ProjectUsageStore.shared.recordSession(project: session.project, agent: session.agentKind.rawValue)
@@ -294,6 +331,10 @@ final class AppDaemon: ObservableObject {
 
     private func refresh() {
         sessions = store.sorted
+        // Drop bindings for sessions that were removed, cleared or pruned.
+        let live = Set(sessions.map(\.id))
+        ghosttyTerminals = ghosttyTerminals.filter { live.contains($0.key) }
+        ghosttyBindAttempts = ghosttyBindAttempts.filter { live.contains($0.key) }
         PetController.shared.update(sessions: sessions)
         StatusBarController.shared.updateStatus(sessions)
     }

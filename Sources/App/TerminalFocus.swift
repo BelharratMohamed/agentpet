@@ -3,7 +3,7 @@ import Foundation
 
 /// Brings the terminal running a given agent session to the front. Terminal.app
 /// and iTerm2 expose a per-tab/session `tty` over AppleScript, so we can focus
-/// the *exact* window and tab. Warp has no scripting dictionary, so the best we
+/// the *exact* window and tab, and Ghostty focuses a surface by id. Warp has no scripting dictionary, so the best we
 /// can do there is activate the app. Everything else falls back to activation.
 enum TerminalFocus {
     /// osascript can block for a beat while the target app comes forward; keep it
@@ -23,7 +23,8 @@ enum TerminalFocus {
         "alacritty": "org.alacritty",
     ]
 
-    static func focus(program: String?, tty: String?, focusURL: String? = nil) {
+    static func focus(program: String?, tty: String?, focusURL: String? = nil,
+                      ghosttyTerminalID: String? = nil, project: String? = nil) {
         guard let program else { return }
         queue.async {
             switch program {
@@ -31,6 +32,10 @@ enum TerminalFocus {
                 runScript(appleTerminalScript(tty: tty!))
             case "iTerm.app" where tty != nil:
                 runScript(iTermScript(tty: tty!))
+            case "ghostty":
+                // Ghostty has no tty in its dictionary; we focus the surface by
+                // the id bound to this session (see AppDaemon).
+                runScript(GhosttyLocator.focusScript(terminalID: ghosttyTerminalID, project: project))
             default:
                 // Warp has no tab scripting but exposes a warp:// deep link that
                 // focuses the exact pane; open it. Otherwise just bring the app

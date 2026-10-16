@@ -11,11 +11,17 @@ CONFIG="${1:-release}"
 
 # Build a universal binary (Apple Silicon + Intel) so the app runs on both.
 # Apple Silicon machines still run the native arm64 slice, unchanged.
-ARCHS=(--arch arm64 --arch x86_64)
-
-echo "Building ($CONFIG, universal arm64 + x86_64)..."
-swift build -c "$CONFIG" "${ARCHS[@]}"
-BINDIR="$(swift build -c "$CONFIG" "${ARCHS[@]}" --show-bin-path)"
+# Set NATIVE_ONLY=1 for a host-arch build: multi-arch needs xcbuild, which ships
+# with Xcode but not with the Command Line Tools alone.
+if [ "${NATIVE_ONLY:-0}" = "1" ]; then
+    ARCHS=()
+    echo "Building ($CONFIG, native arch only)..."
+else
+    ARCHS=(--arch arm64 --arch x86_64)
+    echo "Building ($CONFIG, universal arm64 + x86_64)..."
+fi
+swift build -c "$CONFIG" ${ARCHS[@]+"${ARCHS[@]}"}
+BINDIR="$(swift build -c "$CONFIG" ${ARCHS[@]+"${ARCHS[@]}"} --show-bin-path)"
 
 echo "Assembling $APP ..."
 rm -rf "$APP"
