@@ -19,6 +19,7 @@ final class AppDaemon: ObservableObject {
     }()
     private let server = EventSocketServer(path: AgentPetPaths.socketPath)
     private var pruneTimer: Timer?
+    private var livenessTimer: Timer?
 
     /// sessionId → Ghostty surface id. Ghostty exposes no tty or env var that
     /// ties an agent to its terminal, so we bind them on the session's first
@@ -53,6 +54,9 @@ final class AppDaemon: ObservableObject {
         }
         ReactiveEngine.shared.start()
         adoptAlreadyRunningAgents()
+        livenessTimer = Timer.scheduledTimer(withTimeInterval: 30, repeats: true) { _ in
+            Task { @MainActor [weak self] in self?.adoptAlreadyRunningAgents() }
+        }
     }
 
     /// Registers agents that were open before the app launched (see
@@ -62,8 +66,14 @@ final class AppDaemon: ObservableObject {
             let found = RunningAgentScanner.claudeSessions()
             await MainActor.run { [weak self] in
                 guard let self else { return }
-                for event in found where self.store.session(id: event.sessionId) == nil {
-                    _ = self.store.apply(event, now: Date())
+                let now = Date()
+                for event in found {
+                    if let existing = self.store.session(id: event.sessionId) {
+                        // Still open but silent: don't let it age out.
+                        if existing.state == .registered { self.store.touch(id: existing.id, now: now) }
+                    } else {
+                        _ = self.store.apply(event, now: now)
+                    }
                 }
                 self.refresh()
             }

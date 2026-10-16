@@ -42,6 +42,14 @@ public final class SessionStore {
         byID.removeValue(forKey: id)
     }
 
+    /// Marks a session as still alive without changing its state — keeps an
+    /// open-but-quiet `registered` agent from being pruned as abandoned.
+    public func touch(id: String, now: Date) {
+        guard var session = byID[id] else { return }
+        session.updatedAt = now
+        byID[id] = session
+    }
+
     /// Updates the display title for a session. Called asynchronously after
     /// transcript title resolution completes off the main thread.
     public func updateTitle(id: String, title: String) {
