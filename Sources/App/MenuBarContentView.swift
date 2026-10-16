@@ -313,6 +313,21 @@ private struct FooterButton: View {
     }
 }
 
+/// Clicking a row brings that agent's terminal forward (same as the pet bubble).
+private struct TapToFocusRow: ViewModifier {
+    let sessionId: String
+    let enabled: Bool
+    func body(content: Content) -> some View {
+        if enabled {
+            content
+                .onTapGesture { AppDaemon.shared.focusTerminal(sessionId: sessionId) }
+                .help(NSLocalizedString("Click to open this terminal", comment: "bubble row focus-terminal hint"))
+        } else {
+            content
+        }
+    }
+}
+
 private struct AgentRow: View {
     let session: AgentSession
     var onClear: () -> Void = {}
@@ -344,6 +359,7 @@ private struct AgentRow: View {
         .padding(.horizontal, 14).padding(.vertical, 6)
         .contentShape(Rectangle())
         .onHover { hovering = $0 }
+        .modifier(TapToFocusRow(sessionId: session.id, enabled: session.terminalProgram != nil))
     }
 
     private var project: String {
