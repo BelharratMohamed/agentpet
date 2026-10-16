@@ -7,17 +7,6 @@ import Foundation
 enum GhosttyLocator {
     static let bundleID = "com.mitchellh.ghostty"
 
-    /// Appends a line to `~/.agentpet/ghostty.log` so a wrong binding can be traced.
-    static func log(_ message: String) {
-        let url = URL(fileURLWithPath: AgentPetPaths.baseDir).appendingPathComponent("ghostty.log")
-        let line = "\(ISO8601DateFormatter().string(from: Date())) \(message)\n"
-        if let h = try? FileHandle(forWritingTo: url) {
-            h.seekToEndOfFile(); h.write(Data(line.utf8)); try? h.close()
-        } else {
-            try? line.write(to: url, atomically: true, encoding: .utf8)
-        }
-    }
-
     /// `tell application` would launch Ghostty if it isn't running; never do that.
     static var isRunning: Bool {
         !NSRunningApplication.runningApplications(withBundleIdentifier: bundleID).isEmpty
@@ -25,8 +14,7 @@ enum GhosttyLocator {
 
     /// Blocking (spawns osascript) — call off the main thread.
     static func listTerminals() -> [GhosttyTerminal] {
-        guard isRunning else { log("list: ghostty not running"); return [] }
-        guard let out = runScript(listScript) else { return [] }
+        guard isRunning, let out = runScript(listScript) else { return [] }
         return out.split(separator: "\n").compactMap { line in
             let f = line.split(separator: "\t", omittingEmptySubsequences: false)
             guard f.count == 4 else { return nil }
@@ -134,16 +122,11 @@ enum GhosttyLocator {
         process.arguments = ["-e", source]
         let pipe = Pipe()
         process.standardOutput = pipe
-        let errPipe = Pipe()
-        process.standardError = errPipe
-        guard (try? process.run()) != nil else { log("osascript failed to launch"); return nil }
+        process.standardError = FileHandle.nullDevice
+        guard (try? process.run()) != nil else { return nil }
         let data = pipe.fileHandleForReading.readDataToEndOfFile()
-        let err = errPipe.fileHandleForReading.readDataToEndOfFile()
         process.waitUntilExit()
-        guard process.terminationStatus == 0 else {
-            log("osascript exit=\(process.terminationStatus) stderr=\(String(decoding: err, as: UTF8.self))")
-            return nil
-        }
+        guard process.terminationStatus == 0 else { return nil }
         return String(decoding: data, as: UTF8.self)
     }
 }
