@@ -82,6 +82,8 @@ final class AppDaemon: ObservableObject {
         guard let session = store.session(id: sessionId) else { return }
         let focus: @MainActor @Sendable () -> Void = { [weak self] in
             guard let self else { return }
+            GhosttyLocator.log("click session=\(sessionId.prefix(8)) program=\(session.terminalProgram ?? "nil") "
+                + "tty=\(session.terminalTTY ?? "nil") bound=\(self.ghosttyTerminals[sessionId].map { String($0.prefix(8)) } ?? "nil")")
             TerminalFocus.focus(
                 program: session.terminalProgram, tty: session.terminalTTY, focusURL: session.terminalFocusURL,
                 ghosttyTerminalID: self.ghosttyTerminals[sessionId], project: session.project)
@@ -126,6 +128,9 @@ final class AppDaemon: ObservableObject {
                 ?? (candidates.count == 1 || trustFocus
                     ? GhosttyTerminalMatcher.pick(project: project, among: terminals, claimed: claimed)
                     : nil)
+            GhosttyLocator.log("bind session=\(sessionId.prefix(8)) project=\(project) tty=\(tty ?? "nil") "
+                + "candidates=\(candidates.map { "\($0.id.prefix(8))[\($0.name)]" }) "
+                + "probed=\(probed.map { String($0.prefix(8)) } ?? "nil") chosen=\(found.map { String($0.prefix(8)) } ?? "nil")")
             await MainActor.run { [weak self] in
                 if let self, let found, self.ghosttyTerminals[sessionId] == nil,
                    !self.ghosttyTerminals.values.contains(found) {

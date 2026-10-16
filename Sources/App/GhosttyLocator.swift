@@ -7,6 +7,17 @@ import Foundation
 enum GhosttyLocator {
     static let bundleID = "com.mitchellh.ghostty"
 
+    /// Appends a line to `~/.agentpet/ghostty.log` so a wrong binding can be traced.
+    static func log(_ message: String) {
+        let url = URL(fileURLWithPath: AgentPetPaths.baseDir).appendingPathComponent("ghostty.log")
+        let line = "\(ISO8601DateFormatter().string(from: Date())) \(message)\n"
+        if let h = try? FileHandle(forWritingTo: url) {
+            h.seekToEndOfFile(); h.write(Data(line.utf8)); try? h.close()
+        } else {
+            try? line.write(to: url, atomically: true, encoding: .utf8)
+        }
+    }
+
     /// `tell application` would launch Ghostty if it isn't running; never do that.
     static var isRunning: Bool {
         !NSRunningApplication.runningApplications(withBundleIdentifier: bundleID).isEmpty

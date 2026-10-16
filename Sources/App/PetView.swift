@@ -108,7 +108,7 @@ struct FloatingPetView: View {
                 // would leave an empty (off-centre, contentless) bubble.
                 if bubbleSettings.multiAgentBubbleEnabled
                     && !AgentBubble.visible(model.sessions, settings: bubbleSettings).isEmpty {
-                    alignedToPet(AgentBubble(sessions: model.sessions))
+                    alignedToPet(AgentBubble(sessions: model.sessions, expanded: model.bubbleExpanded))
                 } else if !model.chatLine.isEmpty {
                     alignedToPet(ChatBubble(text: model.chatLine,
                                             projectName: pet.splitPet ? model.projectName : nil))
@@ -229,7 +229,13 @@ struct FloatingPetView: View {
             .onEnded { _ in
                 let wasDrag = petDragging
                 petDragging = false
-                if !wasDrag { model.petTap() }
+                guard !wasDrag else { return }
+                // ⌘-click folds/unfolds the full agent list; a plain click pets.
+                if NSEvent.modifierFlags.contains(.command) {
+                    withAnimation(.spring(response: 0.3, dampingFraction: 0.75)) { model.bubbleExpanded.toggle() }
+                } else {
+                    model.petTap()
+                }
             }
     }
 }
@@ -248,6 +254,8 @@ private struct GroupedSession: Identifiable {
 /// `tailEdge` controls whether the pointer arrow points down (pet) or up (menu bar).
 struct AgentBubble: View {
     let sessions: [AgentSession]
+    /// Show every agent as a full list, whatever the display mode / row cap is.
+    var expanded: Bool = false
     var tailEdge: Edge = .bottom
     @ObservedObject private var settings = BubbleSettings.shared
     @Environment(\.bubbleTailOffset) private var tailOffset
@@ -304,7 +312,7 @@ struct AgentBubble: View {
         }
 
         // 4. Cap to maxSessions (list/compact); carousel shows all groups.
-        if settings.displayMode == .carousel {
+        if expanded || settings.displayMode == .carousel {
             return result
         }
         return Array(result.prefix(settings.maxSessions))
@@ -317,7 +325,7 @@ struct AgentBubble: View {
     private var isPetChat: Bool { tailEdge == .bottom }
     // Capsule for single visible row; rounded rect when taller or carousel dots are shown.
     private var useCapsule: Bool {
-        isPetChat && groupedSessions.count <= 1 && settings.displayMode != .compact
+        isPetChat && groupedSessions.count <= 1 && settings.displayMode != .compact && !expanded
     }
 
     var body: some View {
@@ -386,7 +394,7 @@ struct AgentBubble: View {
 
     @ViewBuilder
     private var bubbleContent: some View {
-        switch settings.displayMode {
+        switch expanded ? .list : settings.displayMode {
         case .list:
             ForEach(groupedSessions) { group in
                 AgentRow(session: group.session, count: group.count, chatStyle: isPetChat)
