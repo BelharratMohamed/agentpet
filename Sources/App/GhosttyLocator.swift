@@ -25,7 +25,8 @@ enum GhosttyLocator {
 
     /// Blocking (spawns osascript) — call off the main thread.
     static func listTerminals() -> [GhosttyTerminal] {
-        guard isRunning, let out = runScript(listScript) else { return [] }
+        guard isRunning else { log("list: ghostty not running"); return [] }
+        guard let out = runScript(listScript) else { return [] }
         return out.split(separator: "\n").compactMap { line in
             let f = line.split(separator: "\t", omittingEmptySubsequences: false)
             guard f.count == 4 else { return nil }
@@ -103,7 +104,11 @@ enum GhosttyLocator {
 
     // Only the front window's selected tab has a meaningful focused surface, and
     // only while Ghostty is the active app.
+    // Separators are built outside the `tell`: inside Ghostty's dictionary a bare
+    // `tab` is its tab *class*, which would print the word "tab" between fields.
     private static let listScript = """
+        set sep to character id 9
+        set nl to character id 10
         tell application id "\(bundleID)"
             set fid to ""
             try
@@ -113,7 +118,7 @@ enum GhosttyLocator {
             repeat with t in terminals
                 set flag to "0"
                 if (id of t) is fid then set flag to "1"
-                set out to out & (id of t) & tab & (working directory of t) & tab & flag & tab & (name of t) & linefeed
+                set out to out & (id of t) & sep & (working directory of t) & sep & flag & sep & (name of t) & nl
             end repeat
             return out
         end tell
@@ -129,11 +134,16 @@ enum GhosttyLocator {
         process.arguments = ["-e", source]
         let pipe = Pipe()
         process.standardOutput = pipe
-        process.standardError = FileHandle.nullDevice
-        guard (try? process.run()) != nil else { return nil }
+        let errPipe = Pipe()
+        process.standardError = errPipe
+        guard (try? process.run()) != nil else { log("osascript failed to launch"); return nil }
         let data = pipe.fileHandleForReading.readDataToEndOfFile()
+        let err = errPipe.fileHandleForReading.readDataToEndOfFile()
         process.waitUntilExit()
-        guard process.terminationStatus == 0 else { return nil }
+        guard process.terminationStatus == 0 else {
+            log("osascript exit=\(process.terminationStatus) stderr=\(String(decoding: err, as: UTF8.self))")
+            return nil
+        }
         return String(decoding: data, as: UTF8.self)
     }
 }
